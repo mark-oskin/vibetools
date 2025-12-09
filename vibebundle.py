@@ -27,7 +27,7 @@ def format_files_for_prompt(files_dict):
     return formatted
 
 def main():
-    parser = argparse.ArgumentParser(description="Reverse engineer a design document from code.")
+    parser = argparse.ArgumentParser(description="Bundle multiple source files into one.")
     parser.add_argument('--files', nargs='+', required=True, help="List of source files")
     parser.add_argument('--model', type=str, default="grok-4-1-fast-non-reasoning", help="Model to use for API calls")
     parser.add_argument(
@@ -48,53 +48,12 @@ def main():
     files_formatted = format_files_for_prompt(files_dict)
 
     prompt = f"""
-You are an expert software engineer and program desiner.  Your job is write a design document
-for a collection of existing source files.  The design document needs to be a veyr specific
-stylized format, described below:
+You are an expert software engineer.  You've been asked to organize the
+code in a collection of source files so that they are in one single source file,
+with the code appearing in a logical order.  Response only with the the combined
+single source file, no other commentary.
 
-These design documents consist of a description of different modules.
-Each module starts with a line by itself 'Module: ' followed by a
-human readable name for that module that describes what it does.
-Next a line should be 'Short: ' followed by a computer readable name
-for that module that is unique both to the program and from any standard
-library import or include.  This computer name will be used as the source file name
-for that module.  Finally if that module depends on any other modules
-in the design document another line should be added next 'Uses: ' which
-followed by a comma separated list of short names that the module depends on.
-        
-Note that it is important modules are dependent on each other in a strict
-tree like structure.  There can be no circular dependencies.  If you want
-to make such a circular dependecy, then the modules should be merged into
-one.
-
-Modules should be described in the file from top level to bottom level.
-Meaning the first module should be the top level source of the program,
-sometimes referred to as the main.  From there modules it depends on
-should be described.
-
-Short module names should never use the same name as standard library
-for import or include names that are part of the main {args.language} standard.
-
-After these stylized lines an English language description for what that
-module should do should follow.  This should be well organized, describing
-what the module does, possibly some of the ways it will do it, possibly 
-example inputs and outputs, and possibly even function names or types"
-that module will export for other modules to use.
-It is helpful that this textural description be formatted for a human to
-read.  Meaning, it has paragraphs, lists, etc.   Ultimately you (grok)
-will read it too, but a human may edit it before that happens.
-
-Any globally visible type, variable or function names described in the document
-should be unique across all modules and distinct from any standard language
-supported library function, class, type or variable names.
-
-Respond only with the design document, without any other commentary.  The number
-of modules in the design document should be equivalent to the number of files provided.
-The linkages between modules (the Uses: clause) should be correct and follow the
-dependencies across modules. 
-
-Here are the source files to work on.  Note that the source files may not be
-the same language that the design document is targetting.
+Here are the source files to work on:
 
 {files_formatted}
 
@@ -113,8 +72,19 @@ the same language that the design document is targetting.
         response = requests.post(url, headers=headers, json=data, timeout=240)
         response.raise_for_status()
         resp_json = response.json()
-        content = resp_json["choices"][0]["message"]["content"]
-        print(content)
+
+        generated_content = resp_json["choices"][0]["message"]["content"].strip()
+     
+        # Strip markdown code fences if present
+        lines = generated_content.splitlines()
+        if lines and lines[0].strip().startswith('```') and len(lines) > 1 and lines[-1].strip() == '```':
+            lines = lines[1:-1]
+            generated_content = '\n'.join(lines).strip()
+        else:
+            generated_content = generated_content.strip()
+     
+
+        print(generated_content)
     except requests.exceptions.HTTPError as he:
         if response.status_code == 404:
             print(f"404 error likely due to invalid model '{args.model}'. Valid models: grok-4-1-fast-reasoning, grok-4-1-fast-non-reasoning, grok-4-fast-reasoning, grok-4-fast-non-reasoning, grok-code-fast-1, grok-4")
@@ -122,13 +92,13 @@ the same language that the design document is targetting.
         else:
             print(f"API request failed: {{he}}")
             print("Response body:", response.text)
-        print("Aborting reverse.")
+        print("Aborting  bundle.")
     except requests.exceptions.Timeout:
         print("API request timed out.")
-        print("Aborting reverse.")
+        print("Aborting  bundle.")
     except requests.exceptions.RequestException as re:
         print(f"API request failed: {re}")
-        print("Aborting reverse.")
+        print("Aborting  bundle.")
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         print(f"Error processing API response: {e}")
         # Optionally, save raw response for debugging
@@ -138,7 +108,7 @@ the same language that the design document is targetting.
             print("Raw response saved to debug_response.txt for inspection.")
         except NameError:
             pass  # No response object
-        print("Aborting reverse.")
+        print("Aborting bundle.")
     except Exception as e:
         print(f"Unexpected error: {e}")
         print("Aborting reverse.")
