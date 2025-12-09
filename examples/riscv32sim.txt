@@ -1,0 +1,108 @@
+Module: RV32i simulator
+Short: rv32sim
+Uses: assembly_parser, simulated_computer
+
+This is the main source for a RISC-V rv32i instruction simulator.  The simulator will take
+in an assembly source file text (passed as an argument), parse it into appropriate
+data structures, and pass those to the simulated_computer module for execution.
+
+Module: Simulated embedded system
+Short: simulated_computer
+Uses: assembly_parser, simulated_io
+
+This module is a RISC-V rv32i simulator.  It should take in the data structures from 
+assembly_parser, and execute instructions.  It should maintain necessary data structures
+such as the register file and program counter.  When an ecall instruction is invoked it should
+communicate with the simulated_io module. Note that it does not need to compile the instructions
+into RISC-V binary form.  It can just process them symbolically.  It should support 
+all RV32i instructions including jalr as well as ecall, as mentioned earlier.  It should support psuedo instructions such as li and other useful ones.
+
+Module: Simulated OS calls
+Short: simulated_io
+Uses: assembly_parser
+
+This module is going to provide a handful of fake system calls for a RISC-V rv32 instruction simulator.  It can be structured as a single function: "do_ecall" that takes the data segment
+object from the assembly_parser module, along with 8 argument registers (a0,a1,a2,a2,a3,a4,a5,a6,a7).  Note the ecall instructoin does not explicitly list these
+as arguments, they are implied.  This will not be a real operating system of course.  Instead it will perform some simple operations.
+Lets define them here.  The operation to be done will be passed in the a7 register.
+
+0  Terminate the program.  This should exit the simulator.
+1  Print an integer contained in a0
+2  Print a string pointed to by the address in a0
+3  Read integer.  This should prompt the user for an integer and return the result in a0.
+
+
+Module: Parser for RISC-V rv32i assembly instructions
+Short: assembly_parser
+
+This module should parse a file that contains RISC-V rv32i instructions and data
+directives.  It should support:
+
+.data data segment directive
+.text code segment directive
+.asciiz a null terminated string
+.align a directive indicating an alignment
+.word
+.byte
+.short
+
+In addition it should support labels in both the data and text segments.
+
+Registers can be specified with their x numbers and by their symbolic names.
+
+The parser should return three data structures:
+
+1. The first is the data segment as it would be compiled into memory.  An array for this is likely a good idea.  Take care with alignments.  We are going to put the stack for the simulated machine
+in the data segment as well, so pad the size of the data segment to at least 8KB.
+
+2. The second is the text (code) segment, where each entry in the array is a parsed instruction.  By
+parsed I mean some kind of efficient representation of that instruction is needed.
+
+3. The third is a map that maps labels to tuples which indicate data or code and a location in the array.
+
+Do not bother supporting compressed instructions, this is just parsing the symbolic
+instructions written out in textural form, so no need to be concerned with that.
+
+Be sure to support ecall.  It has no arguments but should be passed as a real instruction.
+
+Assume that the data segment is placed at 0x10000000 and the code at 0x00000000.
+
+Note that labels, any label, can be used in place of integers at any time.  In the
+example below note how they are used in the lw instruction to specify an offset.
+
+It's useful to support things like li and other psuedo instructions that are commonly used.
+
+Pay particular attention to how lw and sw are handled (as well as other loads and stores).
+They always are of the form "offset(register)", however, sometimes the register is left
+off, in which case the gp register is implied.  See the example below where the offset
+is a label in the data segment (i.e. a constant) and the implied register is gp.
+
+Here is some sample code it should be able to parse (and more of course):
+
+.data
+test_string: .asciiz "This is a test string"
+.align 4
+test_int: .word 7
+test_ptr: .word 8
+
+.text
+    li gp, 0x10000000    # all data will be at 0x10000000
+    addi a7, zero, 1    # a7 = x0 + 1
+    lw a0, test_int     # Translate this into a load offset from the gp register.  i.e. lw a0, offset(gp) where the offset is the numerical offset fromthe start of the .data segment (0x10000000)
+    ecall               # ecall, note no arguments needed because implicitly it is a0,a1,a2,a3,a4,a5,a6,a7
+    addi a7, zero, 2
+    li a0, test_string  # psuedo instruction to load the address of test_string
+    ecall
+    li a0, test_int     # psuedo instruction to load the address of test_int
+    lw a0, 4(a0)        # load from memory the value at 4 + a0.
+    li   a7, 1
+    ecall
+    addi a7, zero, 0
+    ecall
+
+Be sure to support (by stripping out) comments.  Comments begin with a # sign and continue
+to the end of a line.
+
+The parser should return back instruction information using register numbers only.
+The register names (t0, s0, zero, gp, ...) should be replaced.  Furthermore, constants that
+are labels should be replaced with their numerical values.
