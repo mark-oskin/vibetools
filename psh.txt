@@ -1,0 +1,47 @@
+Module: Bash like shell written in vibe
+Short: psh
+
+This is the top level module for a program that is an interactive user shell.  The shell
+is loosely based on bash, so command line syntax such as ; & > < 2>&1 etc should be
+supported.  The shell should have sophisticated command line editing, similar to bash with
+the ability to quickly move forward and backward in the command line.  Commonly used
+commands such as the up-arrow for command line history, the history command, and the
+ability to ! execute a prior command should be supported.  The shell should support tab
+expansion.  The shell should support ~.
+
+The shell should support
+environment variables, but with a syntax for setting and accessing them similar to Python.  These
+environment variables should all be stored in a single dictionary, inside 
+the program.  Call this dictionary "env".
+
+The shell should support an environment variable "prompt" that holds a string that is
+the prompt presented to the user.  The default prompt should be "$ ".
+
+The shell should support a "path" variable that holds a set of directories that should
+be searched when trying to execute a command or tab complete.  The default path
+should either be copied from the system environment PATH or path variable or if none
+exists, be set to "/bin:/usr/bin:/usr/sbin:.".
+
+The shell will not execute the bash scripting language, instead Python will be the core scripting language.  When a python file is asked for execution that Python code should be
+executed by an external Python process.  When Python code is written inline on the command line, it
+should be executed within the shell program itself.  This inline code should be written
+inside parenthesis.  When it can be described in one line then it can be written inline.  For example: (env["x"] = 1)  If more than one line is required, the \ should be used to 
+create it.  For example:
+
+(\
+env["x"] = env["x"] + 1\
+if env["x"] == 10:\
+    print(env["x"])\
+)
+
+This code is executed after the \ chars are removed.
+
+Internally executed code should be guarded with exception
+handling so it does not crash the shell.  This internally executed code can access and change
+environment variables.  Python files on disk can be executed internally as well if the command
+"source" is prefixed in front of the filename.
+
+A command "help" should be provided that details how to use the shell.
+
+
+

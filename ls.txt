@@ -1,0 +1,44 @@
+Module: Main Entry Point
+Short: ls_main
+Uses: ls_args, ls_lister
+
+This is the top-level entry point of the program. It imports sys and calls sys.exit(main()), where main() processes sys.argv[1:] using ls_args.parse_arguments() to obtain an options object (argparse.Namespace) containing all flags and the list of paths to list (defaults to ['.'] if none provided). It determines if color is enabled based on options.color and sys.stdout.isatty(). It fetches the terminal width using shutil.get_terminal_size().columns (default 80). Then, for each path in options.paths (processed in order), it calls ls_lister.list_path(path, options, term_width, color_enabled), printing a newline separator between top-level paths if there are multiple. Handles overall error cases like invalid options. Exits with code 2 on usage errors, 1 on file access errors (emulating ls behavior), 0 on success.
+
+Module: Command Line Argument Parser
+Short: ls_args
+
+Parses command line arguments emulating GNU ls behavior using argparse.ArgumentParser(add_help=True, prog='ls'). Supports all major options including: -a/--all, -A/--almost-all, -B/--ignore-backups, -b/--escape, -C, -c (sort by ctime), -d/--directory, -f (no sort, no filter), -F/--classify, -G/--no-color (alias for --color=never), -h/--human-readable, -i/--inode, -l, --long-format, -L/--dereference, -n/--numeric-uid-gid, -1, -O (omit group), -p, -q/--hide-control-chars, -R/--recursive, -r/--reverse, -s/--size, -S, -t, -T (full time), -u (sort by atime), -U/--no-sort, -w/--width=NUM, -x, -X/--sort=extension, --color={auto,always,never}, --group-directories-first, --time={atime,access,ctime,use,status,mtime,modification}. Bundled short options like -lah work. Trailing non-option arguments are collected as options.paths (list[str]). Returns argparse.Namespace with boolean flags as store_true actions, enums for --color and --time, int for --width, etc. Raises SystemExit(2) on parse errors.  Be explicit about the variables returned in options, as in use the dest= option to add_argument.
+
+Module: Path Lister Orchestrator
+Short: ls_lister
+Uses: ls_scanner, ls_sorter, ls_formatter
+
+Orchestrates listing for a single path (file or directory). def list_path(path: str, options: argparse.Namespace, term_width: int, color_enabled: bool) -> None: Prints directly to sys.stdout. First, abspath = os.path.abspath(path). Tries os.lstat(abspath) (or os.stat if options.L). If stat fails, prints error "ls: cannot access '{}': No such file or directory".format(abspath) and returns. If options.d or not stat.isdir(): Treat as single entry: entry = ls_entry.entry_from_path(abspath, options.L); lines = ls_formatter.format_entries([entry], options, term_width, color_enabled); print('\n'.join(lines)). Else (directory): Prints "{abspath}:". Scans entries = ls_scanner.scan_directory(abspath, options.a or options.f, options.A, options.L, options.B, options.q). Sorts sorted_entries = ls_sorter.sort_entries(entries, options). Formats lines = ls_formatter.format_entries(sorted_entries, options, term_width, color_enabled); print('\n'.join(lines)). If options.R: Identifies subdirs = [e for e in sorted_entries if e.is_dir()]; for subdir_entry in subdirs: print(); ls_lister.list_path(os.path.join(abspath, subdir_entry.name), options, term_width, color_enabled).
+
+Module: Directory Scanner
+Short: ls_scanner
+Uses: ls_entry
+
+Scans a directory for entries. def scan_directory(dir_path: str, show_all: bool, almost_all: bool, follow_symlinks: bool, ignore_backups: bool, quote_control: bool) -> list[LsEntry]: names = os.listdir(dir_path); filtered_names = [n for n in names if show_all or (not n.startswith('.') or (almost_all and n not in {'.', '..'}) ) and (not ignore_backups or not n.endswith('~')) ]; entries = []; for name in filtered_names: full_path = os.path.join(dir_path, name); try: entries.append(ls_entry.entry_from_path(full_path, follow_symlinks)); except OSError: pass  # skip unreadable. Returns list[LsEntry]. Emulates -f by caller passing show_all=True and sorter will skip.
+
+Module: Entry Sorter
+Short: ls_sorter
+Uses: ls_entry
+
+Sorts list of LsEntry based on options. def sort_entries(entries: list[LsEntry], options: argparse.Namespace) -> list[LsEntry]: if options.U or options.f: return entries  # no sort. key_func depends on options: base_key = lambda e: e.stat.st_mtime if options.t else (e.stat.st_ctime if options.c else e.stat.st_atime if options.u else e.stat.st_size if options.S else os.path.splitext(e.name)[1] + e.name if options.X else e.name); if options.group_directories_first: def dir_key(e): return (0 if e.is_dir() else 1, base_key(e)); else: dir_key = base_key; sorted_entries = sorted(entries, key=dir_key, reverse=options.r); return sorted_entries.
+
+Module: Output Formatter
+Short: ls_formatter
+Uses: ls_colors
+
+Formats list of LsEntry into lines of output strings (with ANSI escapes if color_enabled). def format_entries(entries: list[LsEntry], options: argparse.Namespace, term_width: int, color_enabled: bool) -> list[str]: Computes max widths for columns: inode_width (if -i), blocks_width (if -s), name_width, etc. Handles modes: if options.l: long format: each line "perms nlink owner group size mtime name" (owner/group numeric if -n, size human if -h, mtime full if -T or by --time, quote control chars if -q, append / *@| etc if -F). perms from stat.mode (rwx, type dir=l sym=@ etc, setuid etc). size uses format_size(stat.st_blocks * 512 if -s). time uses time.strftime with logic for recent (<6mo: %b %d %H:%M else %b %d %Y). If -1: one per line. Elif options.m: comma-space separated wrapped. Else: multi-column (-C vertical fill, -x horizontal rows), compute ncols = term_width // max_name_width, pad to columns. If color_enabled: name = ls_colors.colorize_entry(e, options). Returns list[str] ready for '\n'.join.
+
+Module: LS Entry Representation
+Short: ls_entry
+
+Defines the LsEntry dataclass for file/directory information. from dataclasses import dataclass; from typing import Optional; @dataclass(frozen=True) class LsEntry: name: str; full_path: str; stat_result: os.stat_result; is_dir: bool = field(init=False); is_symlink: bool = field(init=False);  # derived in __post_init__. def entry_from_path(path: str, follow_symlinks: bool = False) -> LsEntry: if follow_symlinks: st = os.stat(path); else: st = os.lstat(path); return LsEntry(name=os.path.basename(path), full_path=path, stat_result=st); In __post_init__: object.__setattr__(self, 'is_dir', stat_result.st_mode & stat.S_IFDIR); object.__setattr__(self, 'is_symlink', stat_result.st_mode & stat.S_IFLNK); Exports format_size(size: int, human: bool) -> str: KiB/MiB/GiB with suffixes if human (powers of 1024).
+
+Module: Colorizer
+Short: ls_colors
+
+Handles ANSI color output. def colorize_entry(entry: LsEntry, options: argparse.Namespace) -> str: Base colors: dir=34 (blue), symlink=36 (cyan), exec=32;1 (green bold), etc. Hardcoded simple scheme (no full $LS_COLORS parse for core functionality). Returns colored name str with \033[0m reset, only if caller passes color_enabled. Also classify_append(entry) -> str: '/' for dir, '*' exec, '@' symlink, etc if -F.
