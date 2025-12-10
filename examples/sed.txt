@@ -1,0 +1,28 @@
+Module: Sed Stream Editor
+Short: sed
+
+This is the top-level module for a Python 3.12 implementation of GNU sed 4.9, a stream editor for filtering and transforming text from input streams (files or pipelines). It processes input one pass only for efficiency, supports scripting via command-line options, script files, or inline scripts, and excels in pipeline filtering.  This file should have a main.
+
+Key responsibilities:
+- Parse command-line arguments including options like -n/--quiet (suppress auto-print), -e/--expression, -f/--file, -i[SUFFIX]/--in-place (edit in place with optional backup), -E/-r/--regexp-extended (extended regex), -z/--null-data (NUL-separated lines), -u/--unbuffered, --sandbox (disable e/r/w), --posix (disable GNU extensions), and others as documented.
+- If no -e/-f provided, treat first non-option arg as script; remaining args as input files (default to stdin).
+- Compile and execute sed scripts consisting of commands (zero-address like :, #comment, }; zero/one-address like =, a\, i\, q/Q, r/R; range-accepting like {, b, c\, d/D, h/H/g/G, l, n/N, p/P, s/regexp/replacement/, t/T, w/W, x, y/source/dest/).
+- Support addresses: numbers, first~step, $, /regexp/, \c regexp c, special forms like 0,addr2 or addr1,+N/~N; negation with !.
+- Handle pattern space (current line/buffer), hold space (auxiliary buffer), branching (b/t/T), substitutions with & and \1-\9 backrefs, transliteration (y///), I/O ops (w/W/r/R).
+- Regular expressions: POSIX.2 BRE by default, extended with -E/-r; support \n, \a, \t escapes.
+- Process multiple files separately (-s/--separate) or as continuous stream; follow symlinks (--follow-symlinks); line-wrap for l command (-l N).
+- Output transformed text to stdout or files; support in-place editing with backups.
+
+Exported functions/types (all names unique, no stdlib conflicts):
+- `PySedCore_main(argv: list[str]) -> int`: Entry point, parses args, runs sed, returns exit code.
+- `PySedCore_parse_script(script_str_or_file: str|Path, extended_regex: bool) -> SedScript`: Parses script into executable `SedScript` (dataclass with list of `SedCommand`).
+- `SedCommand`: TypedDict/enum-based class for commands, e.g., fields like addr1/addr2 (str|int|None), cmd_type (enum: 'b', 's', etc.), args (dict).
+- `PySedCore_process(input_streams: list[TextIO], script: SedScript, options: dict) -> Iterator[str]`: Yields transformed lines; manages pattern/hold spaces as str, line numbers, cycles.
+- `SedPatternSpace`: Class holding pattern_space: str, hold_space: str, flags (e.g., substituted: bool).
+- `PySedCore_regex_engine(extended: bool) -> RegexMatcher`: Factory for BRE/ERE matcher (custom or re module wrapper, handling sed-specific behaviors).
+
+Example usage:
+```
+PySedCore_main(['pysed', '-n', 's/foo/bar/g', 'input.txt'])  # Replace foo->bar, suppress auto-print.
+```
+Processes input efficiently with minimal buffering (-u), sandbox restrictions, and POSIX compliance (--posix). No dependencies on other modules.

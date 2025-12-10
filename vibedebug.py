@@ -92,7 +92,8 @@ def write_fixed_files(files_dict):
 def main():
     parser = argparse.ArgumentParser(description="Debug a program using Grok API.")
     parser.add_argument('--files', nargs='+', required=True, help="List of files to include for debugging")
-    parser.add_argument('--command', type=str, required=True, help="Command to execute the program (as string)")
+    parser.add_argument('--input_files', nargs='+', required=True, help="List of input files for debugging")
+    parser.add_argument('--command', type=str, required=True, help="Command  execute the program (as string)")
     parser.add_argument('--input', type=str, required=True, help="Input string to pipe to stdin")
     parser.add_argument('--max_iterations', type=int, default=5, help="Maximum number of debugging iterations")
     parser.add_argument('--model', type=str, default="grok-4-1-fast-non-reasoning", help="Model to use for API calls")
@@ -129,6 +130,11 @@ def main():
             
             # Prompt for Grok
             files_formatted = format_files_for_prompt(files_dict)
+
+            if args.input_files:
+                input_files_dict = read_files(args.input_files)
+                input_files_formatted = format_files_for_prompt(input_files_dict)
+
             if args.issue:
                 prompt_part = f"The program is failing in the following way: {args.issue} and for reference here is (stdout + stderr) of execution: {output}"
             else:
@@ -139,8 +145,12 @@ def main():
 {files_formatted}
 
 The command to run the program is: {args.command}
+
 The input piped to stdin is: {args.input}
 {prompt_part}
+
+Here are the input files the program reads (if any, this may be blank):
+{input_files_formatted}
 
 Your task: Debug and fix the code in the provided files so that it executes successfully (return code 0) with the given command and input. Make minimal changes. Preserve the file structure and only modify the necessary parts.
 
